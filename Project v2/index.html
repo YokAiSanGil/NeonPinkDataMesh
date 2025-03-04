@@ -2,30 +2,80 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>PinkNeonVibes V2</title>
+  <title>Neon Pink Data Mesh – v2</title>
   <style>
     body {
-      margin: 0; 
+      margin: 0;
       overflow: hidden;
       background: #000;
+      touch-action: none;
     }
-    #error {
-      position: absolute;
+    #controlOverlay {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: monospace;
+      color: #ff0099;
+      z-index: 100;
+    }
+    .key {
+      background: rgba(255, 0, 153, 0.2);
+      border: 2px solid #ff0099;
+      border-radius: 5px;
+      padding: 5px 10px;
+      margin: 2px;
+      font-size: 18px;
+      user-select: none;
+    }
+    .row { display: flex; }
+    #infoOverlay {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 10px;
+      background: rgba(0,0,0,0.8);
+      color: #ff0099;
+      border: 2px solid #ff0099;
+      font-family: monospace;
+      display: none;
+      z-index: 9999;
+    }
+    #modeIndicator {
+      position: fixed;
       top: 20px;
       left: 20px;
-      color: white;
-      font-family: sans-serif;
+      padding: 10px;
+      background: rgba(0,0,0,0.6);
+      color: #ff0099;
+      border: 1px solid #ff0099;
+      font-family: monospace;
+      z-index: 100;
+      transition: opacity 0.5s;
+      opacity: 0;
     }
   </style>
 </head>
 <body>
-  <div id="error"></div>
-  
-  <!-- Three.js + CSS2DRenderer -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js"></script>
-  <script src="https://unpkg.com/three@0.134.0/examples/js/renderers/CSS2DRenderer.js"></script>
+  <!-- WASD Control Overlay -->
+  <div id="controlOverlay">
+    <div class="key">W</div>
+    <div class="row">
+      <div class="key">A</div>
+      <div class="key">S</div>
+      <div class="key">D</div>
+    </div>
+  </div>
+  <div id="infoOverlay"></div>
+  <div id="modeIndicator">First-Person Mode</div>
 
-  <!-- Your app entry point as an ES Module -->
-  <script type="module" src="./js/main.js"></script>
+  <!-- External libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+
+  <!-- Our entry point -->
+  <script type="module" src="./main.js"></script>
 </body>
 </html>
