@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Neon Pink Data Mesh – Enhanced Navigation</title>
+  <title>Neon Pink Data Mesh – Spherical Space</title>
   <style>
     body { 
       margin: 0; 
@@ -166,8 +166,6 @@
         targetRotation.x -= deltaMove.x * 0.002; 
         targetRotation.y -= deltaMove.y * 0.002;
         
-        // NOTE: Removed vertical rotation limits to allow full camera rotation
-        
         // Update previous position
         previousMousePosition = {
           x: event.clientX,
@@ -247,8 +245,6 @@
       
       targetRotation.x -= deltaMove.x * 0.002;
       targetRotation.y -= deltaMove.y * 0.002;
-      
-      // NOTE: Removed vertical rotation limits here too
       
       previousMousePosition = {
         x: event.touches[0].clientX,
@@ -445,18 +441,49 @@
     }
     
     // ----- Node and Connection Setup -----
-    const NUM_POINTS = 500;
-    const BOUNDS_NODES = 1000;
-    const CONNECT_DIST = 250;
-    const MAX_SPEED = 1.5;
-    const ACCEL_FACTOR = 0.02;
-    const ENCRYPTED_DISPLAY_DIST = 250;
+    const NUM_POINTS = 300;
+    const SPHERE_RADIUS = 1500; // Radius of the spherical boundary
+    const CONNECT_DIST = 300;
+    const MAX_SPEED = 1.9;
+    const ACCEL_FACTOR = 0.04;
+    const ENCRYPTED_DISPLAY_DIST = 200;
+    
+    // Helper function for generating random points inside a sphere
+    function randomPointInSphere(radius) {
+      // Generate random spherical coordinates
+      // This ensures a uniform distribution within the sphere
+      const u = Math.random();
+      const v = Math.random();
+      const theta = 2 * Math.PI * u;
+      const phi = Math.acos(2 * v - 1);
+      
+      // Random radius with cubic distribution for uniform point density
+      const r = radius * Math.cbrt(Math.random());
+      
+      // Convert to Cartesian coordinates
+      const x = r * Math.sin(phi) * Math.cos(theta);
+      const y = r * Math.sin(phi) * Math.sin(theta);
+      const z = r * Math.cos(phi);
+      
+      return new THREE.Vector3(x, y, z);
+    }
     
     const nodes = [];
     const connections = {}; // keyed by "i_j"
     const nodeGeometry = new THREE.SphereGeometry(2, 8, 8);
     const nodeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0099 });
     const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0099, transparent: true, opacity: 0.6 });
+    
+    // Visualize the sphere boundary (optional)
+    const boundaryGeometry = new THREE.SphereGeometry(SPHERE_RADIUS, 32, 32);
+    const boundaryMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff0099,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.05
+    });
+    const boundaryMesh = new THREE.Mesh(boundaryGeometry, boundaryMaterial);
+    scene.add(boundaryMesh);
     
     function getRandomCode(length = 6) {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -492,19 +519,24 @@
     }
     
     for (let i = 0; i < NUM_POINTS; i++) {
-      const x = (Math.random()-0.5)*2*BOUNDS_NODES;
-      const y = (Math.random()-0.5)*2*BOUNDS_NODES;
-      const z = (Math.random()-0.5)*2*BOUNDS_NODES;
+      // Generate random position within the sphere
+      const position = randomPointInSphere(SPHERE_RADIUS);
+      
       const mesh = new THREE.Mesh(nodeGeometry, nodeMaterial.clone());
-      mesh.position.set(x,y,z);
+      mesh.position.copy(position);
+      
+      // Initialize velocity with random direction
       const vel = randomVector3(0.5);
+      
       const sprite = createEncryptedSprite(getRandomCode());
       sprite.position.copy(mesh.position).add(new THREE.Vector3(10,10,0));
       scene.add(sprite);
+      
       mesh.userData.sprite = sprite;
       mesh.userData.velocity = vel;
       mesh.userData.profileId = `Node-${i}`;
-      mesh.userData.info = `Node #${i} at (${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)})`;
+      mesh.userData.info = `Node #${i} at (${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)})`;
+      
       scene.add(mesh);
       nodes.push(mesh);
     }
@@ -558,6 +590,34 @@
       }
     }
     
+    // Function to handle boundary collision for a spherical boundary
+    function handleSphereBoundary(node) {
+      const position = node.position;
+      const velocity = node.userData.velocity;
+      
+      // Calculate distance from center
+      const distance = position.length();
+      
+      // If the node is outside or at the boundary
+      if (distance >= SPHERE_RADIUS) {
+        // Calculate normal vector (points from center to position)
+        const normal = position.clone().normalize();
+        
+        // Calculate reflection: v' = v - 2(v·n)n
+        // Where v is velocity, n is normal, and v' is reflected velocity
+        const dot = velocity.dot(normal);
+        const reflection = velocity.clone().sub(normal.multiplyScalar(2 * dot));
+        
+        // Set the new velocity
+        node.userData.velocity.copy(reflection);
+        
+        // Move the node slightly inside the boundary to prevent sticking
+        const newPosition = position.clone().normalize()
+                            .multiplyScalar(SPHERE_RADIUS * 0.99);
+        node.position.copy(newPosition);
+      }
+    }
+    
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     let hoveredNode = null;
@@ -600,14 +660,22 @@
       // Update dynamic nodes
       nodes.forEach((node) => {
         const vel = node.userData.velocity;
+        
+        // Add random acceleration
         vel.x += (Math.random()-0.5)*ACCEL_FACTOR;
         vel.y += (Math.random()-0.5)*ACCEL_FACTOR;
         vel.z += (Math.random()-0.5)*ACCEL_FACTOR;
-        if (vel.length() > MAX_SPEED) { vel.clampLength(0, MAX_SPEED); }
+        
+        // Limit speed
+        if (vel.length() > MAX_SPEED) { 
+          vel.clampLength(0, MAX_SPEED); 
+        }
+        
+        // Update position
         node.position.add(vel);
-        if (node.position.x > BOUNDS_NODES || node.position.x < -BOUNDS_NODES) { vel.x = -vel.x; }
-        if (node.position.y > BOUNDS_NODES || node.position.y < -BOUNDS_NODES) { vel.y = -vel.y; }
-        if (node.position.z > BOUNDS_NODES || node.position.z < -BOUNDS_NODES) { vel.z = -vel.z; }
+        
+        // Check for sphere boundary collision
+        handleSphereBoundary(node);
         
         // Update encrypted sprite
         const sprite = node.userData.sprite;
