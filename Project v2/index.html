@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Neon Pink Data Mesh – v2</title>
+  <title>Neon Pink Data Mesh – Hammer as Global</title>
   <style>
     body {
       margin: 0;
@@ -10,56 +10,11 @@
       background: #000;
       touch-action: none;
     }
-    #controlOverlay {
-      position: fixed;
-      bottom: 20px;
-      left: 20px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      font-family: monospace;
-      color: #ff0099;
-      z-index: 100;
-    }
-    .key {
-      background: rgba(255, 0, 153, 0.2);
-      border: 2px solid #ff0099;
-      border-radius: 5px;
-      padding: 5px 10px;
-      margin: 2px;
-      font-size: 18px;
-      user-select: none;
-    }
-    .row { display: flex; }
-    #infoOverlay {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      padding: 10px;
-      background: rgba(0,0,0,0.8);
-      color: #ff0099;
-      border: 2px solid #ff0099;
-      font-family: monospace;
-      display: none;
-      z-index: 9999;
-    }
-    #modeIndicator {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      padding: 10px;
-      background: rgba(0,0,0,0.6);
-      color: #ff0099;
-      border: 1px solid #ff0099;
-      font-family: monospace;
-      z-index: 100;
-      transition: opacity 0.5s;
-      opacity: 0;
-    }
+    /* your existing CSS */
   </style>
 </head>
 <body>
-  <!-- WASD Control Overlay -->
+  <!-- WASD Control Overlay, info overlay, etc. remain the same -->
   <div id="controlOverlay">
     <div class="key">W</div>
     <div class="row">
@@ -71,11 +26,16 @@
   <div id="infoOverlay"></div>
   <div id="modeIndicator">First-Person Mode</div>
 
-  <!-- External libraries -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+  <!-- 
+    Hammer as a GLOBAL variable, loaded from a CDN.
+    This is the official distribution that sets window.Hammer.
+  -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
 
-  <!-- Our entry point -->
+  <!-- 
+    Then load your main.js as a module. 
+    All your ES module imports for Three.js remain unchanged.
+  -->
   <script type="module" src="./main.js"></script>
 </body>
 </html>
