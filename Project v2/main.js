@@ -1,49 +1,69 @@
-// main.js (the "entry point")
-import { scene, camera, renderer, labelRenderer } from './scene.js';
-import { createGrid, nodes, lines, crypticCodes } from './mesh.js';
-import { setupControls, raycaster, mouse } from './controls.js';
-import { setupIdle, updateIdle } from './idle.js';
-import { encryptString, getRandomCode } from './utils.js';
+// main.js
+import { initScene, scene, camera, renderer } from './modules/sceneSetup.js';
+import { initControls, updateFirstPersonCamera, lastInteractionTime, idleModeActive, updateInteractionTime } from './modules/controls.js';
+import { startIdleMode, updateIdleCamera } from './modules/idleMode.js';
+import { initNodes, updateNodes, updateConnections } from './modules/meshManager.js';
 
-// 1) Build your grid
-createGrid(); // populates scene with nodes and lines
+// If you placed your constants or timing in utils, import them
+// We keep IDLE_DELAY here, or you could have placed it in utils.js
+const IDLE_DELAY = 10000; // 10 seconds
+const clock = new THREE.Clock();
 
-// 2) Set up controls
-setupControls(); // adds event listeners
+// Mode indicator references
+let modeIndicator;
+let indicatorTimeout;
 
-// 3) Set up idle
-setupIdle(); // idle orbit logic, if you want
-
-// 4) A basic animate function
-let prevTime = performance.now();
-function animate() {
-  requestAnimationFrame(animate);
-
-  // compute deltaTime
-  const currentTime = performance.now();
-  const deltaTime = currentTime - prevTime;
-  prevTime = currentTime;
-
-  // wave effect or any custom logic
-  // example: nodes.forEach(node => { ... });
-
-  // update lines
-  // lines.forEach(line => {
-  //   const { startIdx, endIdx } = line.userData;
-  //   line.geometry.setFromPoints([
-  //     nodes[startIdx].position,
-  //     nodes[endIdx].position,
-  //   ]);
-  // });
-
-  // idle camera update
-  updateIdle(deltaTime);
-
-  // standard render
-  renderer.render(scene, camera);
-  labelRenderer.render(scene, camera);
+function showModeIndicator(mode) {
+  modeIndicator.textContent = mode;
+  modeIndicator.style.opacity = '1';
+  clearTimeout(indicatorTimeout);
+  indicatorTimeout = setTimeout(() => {
+    modeIndicator.style.opacity = '0';
+  }, 2000);
 }
 
-// 5) Go!
-animate();
-console.log('PinkNeonVibes: main.js started, animation loop running...');
+function animate() {
+  requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+
+  // Check idle logic
+  const now = Date.now();
+  if (now - lastInteractionTime > IDLE_DELAY) {
+    if (!idleModeActive) {
+      // Switch to idle
+      // (Set the flag in controls or here; let's do it in controls to keep consistency)
+      // But we'll do it here for clarity:
+      import('./modules/controls.js').then(module => {
+        module.idleModeActive = true;
+      });
+      startIdleMode();
+      showModeIndicator("Idle Mode");
+    }
+    // Update idle camera
+    updateIdleCamera();
+  } else {
+    // If not idle
+    updateFirstPersonCamera(delta);
+  }
+
+  // Update nodes
+  updateNodes(delta);
+  updateConnections();
+
+  renderer.render(scene, camera);
+}
+
+// Initialize the entire app
+function init() {
+  initScene();
+  initControls();
+  initNodes();
+
+  modeIndicator = document.getElementById('modeIndicator');
+  showModeIndicator("First-Person Mode");
+
+  animate();
+}
+
+// Start it all
+init();
