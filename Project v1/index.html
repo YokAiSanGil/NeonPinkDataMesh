@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Neon Pink Data Mesh – Free Navigation with Idle Mode</title>
+  <style>
+    body { 
+      margin: 0; 
+      overflow: hidden; 
+      background: #000; 
+    }
+    /* WASD overlay in bottom right */
+    #controlOverlay {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: monospace;
+      color: #ff0099;
+      z-index: 100;
+    }
+    .key {
+      background: rgba(255, 0, 153, 0.2);
+      border: 2px solid #ff0099;
+      border-radius: 5px;
+      padding: 5px 10px;
+      margin: 2px;
+      font-size: 18px;
+      user-select: none;
+    }
+    .row { display: flex; }
+    /* Info overlay for node details */
+    #infoOverlay {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 10px;
+      background: rgba(0,0,0,0.8);
+      color: #ff0099;
+      border: 2px solid #ff0099;
+      font-family: monospace;
+      display: none;
+      z-index: 9999;
+    }
+  </style>
+</head>
+<body>
+  <!-- WASD Control Overlay -->
+  <div id="controlOverlay">
+    <div class="key">W</div>
+    <div class="row">
+      <div class="key">A</div>
+      <div class="key">S</div>
+      <div class="key">D</div>
+    </div>
+  </div>
+  <div id="infoOverlay"></div>
+  
+  <!-- Three.js and OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
+  
+  <script>
+    // ----- Scene Setup -----
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 3000);
+    camera.position.set(0,50,400);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+    
+    // ----- OrbitControls (for mouse/trackpad rotation & zoom) -----
+    const orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+    orbitControls.enableDamping = true;
+    orbitControls.dampingFactor = 0.05;
+    orbitControls.minDistance = 50;
+    orbitControls.maxDistance = 3000;
+    
+    // ----- WASD Overlay (indicates keyboard navigation) -----
+    const infoOverlay = document.getElementById('infoOverlay');
+    
+    // ----- WASD Navigation Setup -----
+    const keys = { KeyW: false, KeyA: false, KeyS: false, KeyD: false };
+    document.addEventListener('keydown', (event) => { if(keys.hasOwnProperty(event.code)) keys[event.code] = true; });
+    document.addEventListener('keyup', (event) => { if(keys.hasOwnProperty(event.code)) keys[event.code] = false; });
+    
+    const navSpeed = 300; // units per second
+    const clock = new THREE.Clock();
+    function updateNavigation(delta) {
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward);
+      forward.y = 0; forward.normalize();
+      const right = new THREE.Vector3();
+      right.crossVectors(forward, camera.up).normalize();
+      const moveDist = navSpeed * delta;
+      if (keys.KeyW) camera.position.addScaledVector(forward, moveDist);
+      if (keys.KeyS) camera.position.addScaledVector(forward, -moveDist);
+      if (keys.KeyA) camera.position.addScaledVector(right, -moveDist);
+      if (keys.KeyD) camera.position.addScaledVector(right, moveDist);
+    }
+    
+    // ----- Idle Mode Variables -----
+    let lastInteractionTime = Date.now();
+    let idleModeActive = false;
+    const idleDelay = 10000;          // 10 seconds idle delay
+    const transitionTime = 20;        // seconds for acceleration (ramp-up)
+    const constantAngularSpeed = 0.1; // radians per second (after transition)
+    
+    // These will capture the orbit parameters from the current camera position.
+    let theta0 = 0, idleR = 0, idleY = 0;
+    let idleStartTime = 0;
+    function startIdleMode() {
+      idleModeActive = true;
+      orbitControls.enabled = false;
+      idleStartTime = Date.now();
+      // Capture current horizontal orbit parameters:
+      theta0 = Math.atan2(camera.position.z, camera.position.x);
+      idleR = Math.sqrt(camera.position.x**2 + camera.position.z**2);
+      idleY = camera.position.y;
+    }
+    
+    // Update the idle camera orbit. We use quadratic easing for t < transitionTime.
+    function updateIdleCamera() {
+      let tIdle = (Date.now() - idleStartTime) / 1000; // idle time in seconds
+      let angle;
+      if (tIdle < transitionTime) {
+        // Quadratic easing: angle = theta0 + (angularSpeed/(2*transitionTime)) * tIdle^2
+        angle = theta0 + (constantAngularSpeed/(2*transitionTime)) * tIdle * tIdle;
+      } else {
+        angle = theta0 + (constantAngularSpeed/2) * transitionTime + constantAngularSpeed * (tIdle - transitionTime);
+      }
+      let targetX = idleR * Math.cos(angle);
+      let targetZ = idleR * Math.sin(angle);
+      let targetY = idleY;
+      let targetPos = new THREE.Vector3(targetX, targetY, targetZ);
+      // Use lerp to smoothly transition to target position.
+      camera.position.lerp(targetPos, 0.05);
+      camera.lookAt(0, 0, 0);
+    }
+    
+    // ----- Node and Connection Setup (my-engin dynamic mesh) -----
+    const NUM_POINTS = 500;
+    const BOUNDS_NODES = 1000;
+    const CONNECT_DIST = 250;
+    const MAX_SPEED = 1.5;
+    const ACCEL_FACTOR = 0.02;
+    const ENCRYPTED_DISPLAY_DIST = 250;
+    
+    const nodes = [];
+    const connections = {}; // keyed by "i_j"
+    const nodeGeometry = new THREE.SphereGeometry(2, 8, 8);
+    const nodeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0099 });
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0099, transparent: true, opacity: 0.6 });
+    
+    function getRandomCode(length = 6) {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let result = '';
+      for (let i = 0; i < length; i++) {
+        result += chars[Math.floor(Math.random() * chars.length)];
+      }
+      return result;
+    }
+    
+    function randomVector3(scale = 1) {
+      return new THREE.Vector3(
+        (Math.random()-0.5)*2*scale,
+        (Math.random()-0.5)*2*scale,
+        (Math.random()-0.5)*2*scale
+      );
+    }
+    
+    function createEncryptedSprite(initialText) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128; canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      ctx.font = '24px monospace';
+      ctx.fillStyle = '#ff0099';
+      ctx.textAlign = 'center';
+      ctx.fillText(initialText, canvas.width/2, canvas.height/2);
+      const texture = new THREE.CanvasTexture(canvas);
+      const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+      const sprite = new THREE.Sprite(material);
+      sprite.scale.set(50, 25, 1);
+      sprite.userData = { canvas, ctx };
+      return sprite;
+    }
+    
+    for (let i = 0; i < NUM_POINTS; i++) {
+      const x = (Math.random()-0.5)*2*BOUNDS_NODES;
+      const y = (Math.random()-0.5)*2*BOUNDS_NODES;
+      const z = (Math.random()-0.5)*2*BOUNDS_NODES;
+      const mesh = new THREE.Mesh(nodeGeometry, nodeMaterial.clone());
+      mesh.position.set(x,y,z);
+      const vel = randomVector3(0.5);
+      const sprite = createEncryptedSprite(getRandomCode());
+      sprite.position.copy(mesh.position).add(new THREE.Vector3(10,10,0));
+      scene.add(sprite);
+      mesh.userData.sprite = sprite;
+      mesh.userData.velocity = vel;
+      mesh.userData.profileId = `Node-${i}`;
+      mesh.userData.info = `Node #${i} at (${x.toFixed(1)}, ${y.toFixed(1)}, ${z.toFixed(1)})`;
+      scene.add(mesh);
+      nodes.push(mesh);
+    }
+    
+    function getKey(i,j) {
+      return i < j ? `${i}_${j}` : `${j}_${i}`;
+    }
+    
+    function updateConnections() {
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i+1; j < nodes.length; j++) {
+          const dist = nodes[i].position.distanceTo(nodes[j].position);
+          const key = getKey(i,j);
+          if (dist < CONNECT_DIST) {
+            if (!connections[key]) {
+              const stickyDuration = Math.random()*1.5+0.5;
+              const geo = new THREE.BufferGeometry().setFromPoints([
+                nodes[i].position.clone(),
+                nodes[j].position.clone()
+              ]);
+              const line = new THREE.Line(geo, lineMaterial.clone());
+              scene.add(line);
+              connections[key] = { line, a: nodes[i], b: nodes[j], stickyTimer: stickyDuration };
+            } else {
+              connections[key].line.geometry.setFromPoints([
+                nodes[i].position.clone(),
+                nodes[j].position.clone()
+              ]);
+              if (connections[key].stickyTimer > 0) {
+                const avgVel = nodes[i].userData.velocity.clone()
+                  .add(nodes[j].userData.velocity)
+                  .multiplyScalar(0.5);
+                nodes[i].userData.velocity.lerp(avgVel, 0.02);
+                nodes[j].userData.velocity.lerp(avgVel, 0.02);
+                connections[key].stickyTimer -= 0.0167;
+              } else {
+                if (Math.random() < 0.005) {
+                  connections[key].stickyTimer = Math.random()*1.5+0.5;
+                }
+              }
+            }
+          } else {
+            if (connections[key]) {
+              scene.remove(connections[key].line);
+              connections[key].line.geometry.dispose();
+              connections[key].line.material.dispose();
+              delete connections[key];
+            }
+          }
+        }
+      }
+    }
+    
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let hoveredNode = null;
+    document.addEventListener('mousemove', (event) => {
+      mouse.x = (event.clientX/window.innerWidth)*2 - 1;
+      mouse.y = -(event.clientY/window.innerHeight)*2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(nodes);
+      hoveredNode = intersects.length > 0 ? intersects[0].object : null;
+    });
+    document.addEventListener('click', () => {
+      if (hoveredNode) {
+        infoOverlay.style.display = 'block';
+        infoOverlay.innerHTML = `<strong>${hoveredNode.userData.profileId}</strong><br/>${hoveredNode.userData.info}`;
+      } else {
+        infoOverlay.style.display = 'none';
+      }
+    });
+    
+    // ----- Animation Loop -----
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      
+      // If any WASD key is pressed, disable idle mode and OrbitControls.
+      if (keys.KeyW || keys.KeyA || keys.KeyS || keys.KeyD) {
+        orbitControls.enabled = false;
+        updateNavigation(delta);
+        idleModeActive = false;
+        lastInteractionTime = Date.now();
+      } else {
+        // If no WASD input and more than 10 seconds have passed, activate idle mode.
+        if (Date.now() - lastInteractionTime > 10000) {
+          if (!idleModeActive) startIdleMode();
+          updateIdleCamera();
+        } else {
+          orbitControls.enabled = true;
+          orbitControls.update();
+        }
+      }
+      
+      // Update dynamic nodes.
+      nodes.forEach((node) => {
+        const vel = node.userData.velocity;
+        vel.x += (Math.random()-0.5)*ACCEL_FACTOR;
+        vel.y += (Math.random()-0.5)*ACCEL_FACTOR;
+        vel.z += (Math.random()-0.5)*ACCEL_FACTOR;
+        if (vel.length() > MAX_SPEED) { vel.clampLength(0, MAX_SPEED); }
+        node.position.add(vel);
+        if (node.position.x > BOUNDS_NODES || node.position.x < -BOUNDS_NODES) { vel.x = -vel.x; }
+        if (node.position.y > BOUNDS_NODES || node.position.y < -BOUNDS_NODES) { vel.y = -vel.y; }
+        if (node.position.z > BOUNDS_NODES || node.position.z < -BOUNDS_NODES) { vel.z = -vel.z; }
+        
+        // Update encrypted sprite.
+        const sprite = node.userData.sprite;
+        if (camera.position.distanceTo(node.position) < ENCRYPTED_DISPLAY_DIST) {
+          sprite.visible = true;
+          const newCode = getRandomCode();
+          const { canvas, ctx } = sprite.userData;
+          ctx.clearRect(0,0,canvas.width,canvas.height);
+          ctx.fillStyle = '#ff0099';
+          ctx.font = '24px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(newCode, canvas.width/2, canvas.height/2);
+          sprite.material.map.needsUpdate = true;
+          sprite.position.copy(node.position).add(new THREE.Vector3(10,10,0));
+        } else {
+          sprite.visible = false;
+        }
+      });
+      
+      // Update connections.
+      updateConnections();
+      
+      renderer.render(scene, camera);
+    }
+    animate();
+    
+    // ----- Handle Window Resizing -----
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>

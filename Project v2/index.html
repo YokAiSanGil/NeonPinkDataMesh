@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PinkNeonVibes V2</title>
+  <style>
+    body {
+      margin: 0; 
+      overflow: hidden;
+      background: #000;
+    }
+    #error {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: white;
+      font-family: sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="error"></div>
+  
+  <!-- Three.js + CSS2DRenderer -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.134.0/examples/js/renderers/CSS2DRenderer.js"></script>
+
+  <!-- Your app entry point as an ES Module -->
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
